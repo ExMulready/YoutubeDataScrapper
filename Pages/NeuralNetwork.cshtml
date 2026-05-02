@@ -1,0 +1,134 @@
+@page
+@model NeuralNetworkModel
+@{
+    ViewData["Title"] = "Neural Network";
+    var scoreColor = Model.Session.ScorePercent >= 70 ? "#198754"
+                   : Model.Session.ScorePercent >= 40 ? "#ffc107"
+                   : "#dc3545";
+    // Normalize feature importance bars: max abs value → 100%
+    double maxImportance = 0;
+    if (Model.Session.FeatureImportance?.Any() == true)
+        maxImportance = Model.Session.FeatureImportance.Values.Max(Math.Abs);
+}
+
+<div class="d-flex align-items-center mb-4 mt-3">
+    <h4 class="mb-0 fw-bold">
+        <i class="bi bi-cpu text-primary me-2"></i>Neural Network
+    </h4>
+</div>
+
+<div class="row g-4">
+
+    <!-- ── Train Section ──────────────────────────────────────────────────────── -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-transparent fw-semibold">
+                <i class="bi bi-lightning-charge text-warning me-2"></i>Train Model
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Train the neural network on saved video data to learn which content patterns drive views.
+                </p>
+                <form method="post" asp-page-handler="Train" data-loading="Training neural network...">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Niche (optional)</label>
+                        <input type="text" name="niche" class="form-control"
+                               placeholder="Leave blank to train on all niches" />
+                        <div class="form-text">Filter training data to a specific niche.</div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold small">
+                            Epochs: <span id="epochsDisplay">150</span>
+                        </label>
+                        <input type="range" name="epochs" id="epochsRange"
+                               class="form-range" min="50" max="500" step="10" value="150"
+                               oninput="document.getElementById('epochsDisplay').textContent = this.value" />
+                        <div class="d-flex justify-content-between text-muted" style="font-size:0.75rem;">
+                            <span>50 (fast)</span><span>500 (thorough)</span>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-warning fw-semibold w-100">
+                        <i class="bi bi-play-fill me-1"></i>Train Model
+                    </button>
+                </form>
+
+                @if (!string.IsNullOrEmpty(Model.Session.TrainResultText))
+                {
+                    <div class="mt-3 alert @(Model.Session.TrainSuccess ? "alert-success" : "alert-warning") mb-0 small">
+                        <i class="bi @(Model.Session.TrainSuccess ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill") me-2"></i>
+                        @Model.Session.TrainResultText
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Score Section ──────────────────────────────────────────────────────── -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-transparent fw-semibold">
+                <i class="bi bi-speedometer2 text-primary me-2"></i>Score a Video Concept
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Enter a video title and tags to predict its potential viral score.
+                </p>
+                <form method="post" asp-page-handler="Score" data-loading="Scoring video concept...">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Video Title <span class="text-danger">*</span></label>
+                        <input type="text" name="title" class="form-control"
+                               placeholder="e.g. I Tried 30 Days of Sourdough – Here's What Happened" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Tags (comma-separated)</label>
+                        <input type="text" name="tags" class="form-control"
+                               placeholder="sourdough, baking, bread recipe, fermentation" />
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold small">Niche (optional)</label>
+                        <input type="text" name="niche" class="form-control"
+                               placeholder="Match the niche your model was trained on" />
+                    </div>
+                    <button type="submit" class="btn btn-primary fw-semibold w-100">
+                        <i class="bi bi-graph-up me-1"></i>Score Concept
+                    </button>
+                </form>
+
+                @if (Model.Session.HasScoreResult)
+                {
+                    <div class="mt-4">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-semibold small">Predicted Viral Score</span>
+                            <span class="fw-bold fs-5" style="color:@scoreColor">@Model.Session.ScorePercent.ToString("F1")%</span>
+                        </div>
+                        <div class="score-bar-track mb-3">
+                            <div class="score-bar-fill"
+                                 style="width:@Model.Session.ScorePercent.ToString("F1")%;background-color:@scoreColor;"></div>
+                        </div>
+
+                        @if (Model.Session.FeatureImportance?.Any() == true && maxImportance > 0)
+                        {
+                            <div class="fw-semibold small mb-2 text-muted text-uppercase">Feature Importance</div>
+                            @foreach (var kv in Model.Session.FeatureImportance.Take(8))
+                            {
+                                var barWidth = maxImportance > 0 ? Math.Abs(kv.Value) / maxImportance * 100 : 0;
+                                var barColor = kv.Value >= 0 ? "#198754" : "#dc3545";
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span class="small">@kv.Key</span>
+                                        <span class="small text-muted">@kv.Value.ToString("+0.0000;-0.0000")</span>
+                                    </div>
+                                    <div class="score-bar-track" style="height:8px;">
+                                        <div class="score-bar-fill"
+                                             style="width:@barWidth.ToString("F1")%;background-color:@barColor;height:8px;"></div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+</div>

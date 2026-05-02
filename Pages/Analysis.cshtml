@@ -1,0 +1,258 @@
+@page
+@model AnalysisModel
+@{
+    ViewData["Title"] = "Analysis";
+    var p = Model.Session.CurrentPatterns;
+}
+
+<div class="d-flex align-items-center mb-4 mt-3 flex-wrap gap-2">
+    <h4 class="mb-0 fw-bold">
+        <i class="bi bi-bar-chart-line text-success me-2"></i>Pattern Analysis
+    </h4>
+    @if (p != null)
+    {
+        <span class="niche-badge ms-2">@p.Niche</span>
+        <span class="text-muted small">@p.VideosAnalyzed videos analyzed</span>
+    }
+</div>
+
+@if (p == null)
+{
+    <div class="text-center py-5">
+        <i class="bi bi-bar-chart display-1 text-muted opacity-50"></i>
+        <h5 class="mt-3 text-muted">No analysis data yet</h5>
+        <p class="text-muted">Go to <a href="/">Research</a>, search a niche, then click <strong>Analyze Patterns</strong>.</p>
+    </div>
+}
+else
+{
+    <!-- ── Stats Cards ─────────────────────────────────────────────────────── -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card shadow-sm stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small fw-semibold mb-1">AVG VIEWS</div>
+                    <div class="fw-bold fs-4">@p.AvgViewCount.ToString("N0")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-sm stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small fw-semibold mb-1">AVG ENGAGEMENT</div>
+                    <div class="fw-bold fs-4">@p.AvgEngagementRate.ToString("F2")%</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-sm stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small fw-semibold mb-1">OPTIMAL DURATION</div>
+                    <div class="fw-bold fs-4">~@(p.OptimalDurationSeconds / 60) min</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-sm stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small fw-semibold mb-1">TITLE FORMULAS</div>
+                    <div class="fw-bold fs-4">@p.TitleFormulas.Count found</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+
+        <!-- ── Title Formulas ──────────────────────────────────────────────── -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-transparent fw-semibold">
+                    <i class="bi bi-type text-primary me-2"></i>Title Formulas That Work
+                </div>
+                <div class="card-body">
+                    @if (!p.TitleFormulas.Any())
+                    {
+                        <p class="text-muted small mb-0">No strong patterns found in this dataset.</p>
+                    }
+                    else
+                    {
+                        @foreach (var f in p.TitleFormulas)
+                        {
+                            <div class="mb-3 pb-2 border-bottom">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="fw-semibold small">@f.Pattern</span>
+                                    <span class="badge bg-primary rounded-pill">@f.Frequency&times;</span>
+                                </div>
+                                <div class="text-muted small mt-1 fst-italic">"@f.Example"</div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Top Keywords ────────────────────────────────────────────────── -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-transparent fw-semibold">
+                    <i class="bi bi-key text-warning me-2"></i>High-Frequency Title Keywords
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap">
+                        @foreach (var kw in p.TopKeywords)
+                        {
+                            <span class="tag-chip">@kw.Keyword <strong>@kw.Count</strong></span>
+                        }
+                        @if (!p.TopKeywords.Any())
+                        {
+                            <p class="text-muted small mb-0">No repeated keywords found.</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Top Tags ────────────────────────────────────────────────────── -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-transparent fw-semibold">
+                    <i class="bi bi-tags text-info me-2"></i>Most-Used Video Tags
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap">
+                        @foreach (var t in p.TopTags)
+                        {
+                            <span class="tag-chip">@t.Keyword <strong>@t.Count</strong></span>
+                        }
+                        @if (!p.TopTags.Any())
+                        {
+                            <p class="text-muted small mb-0">No tag data available (videos may not have public tags).</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Content Gaps ─────────────────────────────────────────────────── -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-transparent fw-semibold">
+                    <i class="bi bi-crosshair text-danger me-2"></i>Content Gaps (Opportunities)
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var g in p.ContentGaps)
+                        {
+                            <li class="d-flex align-items-start mb-2">
+                                <i class="bi bi-arrow-right-circle-fill text-success me-2 mt-1 flex-shrink-0"></i>
+                                <span class="small">@g</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Hook Styles ──────────────────────────────────────────────────── -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-transparent fw-semibold">
+                    <i class="bi bi-lightning text-warning me-2"></i>Hook Styles That Perform
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var h in p.HookStyles)
+                        {
+                            <li class="d-flex align-items-start mb-2">
+                                <i class="bi bi-play-circle-fill text-primary me-2 mt-1 flex-shrink-0"></i>
+                                <span class="small">@h</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Thumbnail Patterns ──────────────────────────────────────────── -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-transparent fw-semibold">
+                    <i class="bi bi-image text-secondary me-2"></i>Thumbnail Patterns
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var tp in p.ThumbnailPatterns)
+                        {
+                            <li class="d-flex align-items-start mb-2">
+                                <i class="bi bi-camera-fill text-secondary me-2 mt-1 flex-shrink-0"></i>
+                                <span class="small">@tp</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Top Performers Table ────────────────────────────────────────── -->
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-transparent fw-semibold">
+                    <i class="bi bi-trophy text-warning me-2"></i>Top Performing Videos
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-3" style="width:80px">Thumb</th>
+                                    <th>Title</th>
+                                    <th>Channel</th>
+                                    <th class="text-end">Views</th>
+                                    <th class="text-end">Engage%</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var v in p.TopPerformers)
+                                {
+                                    <tr>
+                                        <td class="ps-3">
+                                            @if (!string.IsNullOrEmpty(v.ThumbnailUrl))
+                                            {
+                                                <img src="@v.ThumbnailUrl" alt="" style="width:72px;border-radius:4px;" />
+                                            }
+                                        </td>
+                                        <td style="max-width:380px;">
+                                            <a href="https://www.youtube.com/watch?v=@v.VideoId" target="_blank"
+                                               class="text-decoration-none fw-semibold text-dark small">@v.Title</a>
+                                        </td>
+                                        <td class="text-muted small">@v.ChannelTitle</td>
+                                        <td class="text-end fw-semibold small">@v.ViewCount.ToString("N0")</td>
+                                        <td class="text-end">
+                                            <span class="badge rounded-pill @(v.EngagementRate > 5 ? "bg-success" : v.EngagementRate > 2 ? "bg-warning text-dark" : "bg-secondary")">
+                                                @v.EngagementRate.ToString("F2")%
+                                            </span>
+                                        </td>
+                                        <td class="text-muted small">@v.Duration</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── CTA to Ideas ────────────────────────────────────────────────────── -->
+    <div class="mt-4 d-flex gap-2">
+        <a href="/Ideas" class="btn btn-warning fw-semibold">
+            <i class="bi bi-lightbulb me-1"></i>Generate Video Ideas from This Analysis
+        </a>
+        <a href="/" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Back to Research
+        </a>
+    </div>
+}

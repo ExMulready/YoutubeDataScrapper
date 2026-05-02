@@ -1,0 +1,146 @@
+@page
+@model IdeasModel
+@{
+    ViewData["Title"] = "Ideas";
+    var ideas = Model.Session.CurrentIdeas;
+}
+
+<div class="d-flex align-items-center mb-4 mt-3 flex-wrap gap-2">
+    <h4 class="mb-0 fw-bold">
+        <i class="bi bi-lightbulb text-warning me-2"></i>Video Ideas
+    </h4>
+    @if (ideas != null)
+    {
+        <span class="niche-badge ms-2">@ideas.Niche</span>
+        <span class="text-muted small">@ideas.Ideas.Count ideas · generated @(DateTime.TryParse(ideas.GeneratedAt, out var dt) ? dt.ToLocalTime().ToString("g") : ideas.GeneratedAt)</span>
+    }
+</div>
+
+@if (ideas == null)
+{
+    @if (Model.Session.CurrentPatterns == null)
+    {
+        <div class="text-center py-5">
+            <i class="bi bi-bar-chart-line display-1 text-muted opacity-50"></i>
+            <h5 class="mt-3 text-muted">No pattern data yet</h5>
+            <p class="text-muted">Go to <a href="/">Research</a>, search a niche, then run <strong>Analyze Patterns</strong> before generating ideas.</p>
+        </div>
+    }
+    else
+    {
+        <div class="text-center py-5">
+            <i class="bi bi-lightbulb display-1 text-warning opacity-50"></i>
+            <h5 class="mt-3 text-muted">Ready to generate ideas</h5>
+            <p class="text-muted mb-4">Analysis found for <strong>@Model.Session.CurrentPatterns.Niche</strong> — click below to generate AI-powered ideas.</p>
+            <form method="post" asp-page-handler="Generate" data-loading="Generating ideas with AI...">
+                <button type="submit" class="btn btn-warning btn-lg fw-semibold">
+                    <i class="bi bi-lightbulb me-2"></i>Generate Video Ideas
+                </button>
+            </form>
+        </div>
+    }
+}
+else
+{
+    <!-- ── Actions Bar ─────────────────────────────────────────────────────── -->
+    <div class="d-flex gap-2 mb-4 flex-wrap align-items-center">
+        <form method="post" asp-page-handler="Generate" data-loading="Regenerating ideas...">
+            <button type="submit" class="btn btn-warning fw-semibold">
+                <i class="bi bi-arrow-clockwise me-1"></i>Regenerate Ideas
+            </button>
+        </form>
+        <a href="/Analysis" class="btn btn-outline-secondary">
+            <i class="bi bi-bar-chart-line me-1"></i>Back to Analysis
+        </a>
+    </div>
+
+    <!-- ── Idea Cards ──────────────────────────────────────────────────────── -->
+    <div class="row g-4">
+        @foreach (var idea in ideas.Ideas)
+        {
+            var scoreClass = idea.EstimatedViralScore >= 70 ? "bg-success"
+                           : idea.EstimatedViralScore >= 40 ? "bg-warning text-dark"
+                           : "bg-danger";
+
+            <div class="col-12">
+                <div class="card shadow-sm idea-card">
+                    <div class="card-body">
+
+                        <!-- Title row -->
+                        <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                            <div>
+                                <span class="badge bg-secondary rounded-pill me-2">#@idea.Rank</span>
+                                <span class="fw-bold fs-5">@idea.Title</span>
+                            </div>
+                            <span class="badge @scoreClass rounded-pill fs-6 flex-shrink-0">
+                                @idea.EstimatedViralScore% viral
+                            </span>
+                        </div>
+
+                        <div class="row g-3">
+
+                            <!-- Hook -->
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="bi bi-lightning-fill text-warning me-2"></i>
+                                    <span class="fw-semibold small text-uppercase text-muted">Hook (first 10s)</span>
+                                </div>
+                                <p class="small mb-0">@idea.Hook</p>
+                            </div>
+
+                            <!-- Thumbnail Concept -->
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="bi bi-image text-secondary me-2"></i>
+                                    <span class="fw-semibold small text-uppercase text-muted">Thumbnail Concept</span>
+                                </div>
+                                <p class="small mb-0">@idea.ThumbnailConcept</p>
+                            </div>
+
+                            <!-- Why It Will Perform -->
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="bi bi-graph-up-arrow text-success me-2"></i>
+                                    <span class="fw-semibold small text-uppercase text-muted">Why It Will Perform</span>
+                                </div>
+                                <p class="small mb-0">@idea.WhyItWillPerform</p>
+                            </div>
+
+                            <!-- Content Outline -->
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="bi bi-list-ol text-primary me-2"></i>
+                                    <span class="fw-semibold small text-uppercase text-muted">Content Outline</span>
+                                </div>
+                                <ol class="small mb-0 ps-3">
+                                    @foreach (var step in idea.ContentOutline)
+                                    {
+                                        <li>@step</li>
+                                    }
+                                </ol>
+                            </div>
+
+                            <!-- Suggested Tags -->
+                            @if (idea.SuggestedTags.Any())
+                            {
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center mb-1">
+                                        <i class="bi bi-tags text-info me-2"></i>
+                                        <span class="fw-semibold small text-uppercase text-muted">Suggested Tags</span>
+                                    </div>
+                                    <div class="d-flex flex-wrap">
+                                        @foreach (var tag in idea.SuggestedTags)
+                                        {
+                                            <span class="tag-chip">@tag</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}

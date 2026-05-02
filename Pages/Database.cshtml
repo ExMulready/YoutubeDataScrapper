@@ -1,0 +1,112 @@
+@page
+@model DatabaseModel
+@{
+    ViewData["Title"] = "Database";
+}
+
+<div class="d-flex align-items-center mb-4 mt-3 flex-wrap gap-2">
+    <h4 class="mb-0 fw-bold">
+        <i class="bi bi-database text-primary me-2"></i>Saved Videos
+    </h4>
+    <span class="text-muted small">@Model.Videos.Count video@(Model.Videos.Count == 1 ? "" : "s")</span>
+    @if (!string.IsNullOrEmpty(Model.TitleFilter) || !string.IsNullOrEmpty(Model.Niche))
+    {
+        <span class="niche-badge ms-1">filtered</span>
+    }
+</div>
+
+<!-- ── Filter Form ────────────────────────────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold small">Search Title</label>
+                    <input type="text" name="titleFilter" value="@Model.TitleFilter"
+                           class="form-control" placeholder="Filter by title keyword..." />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold small">Niche</label>
+                    <input type="text" name="niche" value="@Model.Niche"
+                           class="form-control" placeholder="e.g. woodworking..." />
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-grow-1">
+                        <i class="bi bi-funnel me-1"></i>Filter
+                    </button>
+                    <a href="/Database" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (!Model.Videos.Any())
+{
+    <div class="text-center py-5">
+        <i class="bi bi-database display-1 text-muted opacity-50"></i>
+        <h5 class="mt-3 text-muted">No videos in database</h5>
+        <p class="text-muted">Go to <a href="/">Research</a>, search a niche, and click <strong>Save to DB</strong>.</p>
+    </div>
+}
+else
+{
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3" style="width:80px">Thumb</th>
+                            <th>Title</th>
+                            <th>Niche</th>
+                            <th>Channel</th>
+                            <th class="text-end">Views</th>
+                            <th class="text-end">Engage%</th>
+                            <th>Duration</th>
+                            <th>Saved</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in Model.Videos)
+                        {
+                            <tr>
+                                <td class="ps-3">
+                                    @if (!string.IsNullOrEmpty(v.ThumbnailUrl))
+                                    {
+                                        <a href="https://www.youtube.com/watch?v=@v.VideoId" target="_blank">
+                                            <img src="@v.ThumbnailUrl" alt="" style="width:72px;border-radius:4px;" />
+                                        </a>
+                                    }
+                                </td>
+                                <td style="max-width:340px;">
+                                    <a href="https://www.youtube.com/watch?v=@v.VideoId" target="_blank"
+                                       class="text-decoration-none fw-semibold text-dark small lh-sm">
+                                        @v.Title
+                                    </a>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(v.Niche))
+                                    {
+                                        <span class="niche-badge" style="font-size:0.72rem;">@v.Niche</span>
+                                    }
+                                </td>
+                                <td class="text-muted small">@v.ChannelTitle</td>
+                                <td class="text-end fw-semibold small">@v.ViewCount.ToString("N0")</td>
+                                <td class="text-end">
+                                    <span class="badge rounded-pill @(v.EngagementRate > 5 ? "bg-success" : v.EngagementRate > 2 ? "bg-warning text-dark" : "bg-secondary")">
+                                        @v.EngagementRate.ToString("F2")%
+                                    </span>
+                                </td>
+                                <td class="text-muted small">@v.Duration</td>
+                                <td class="text-muted small">@v.CollectedAt.ToLocalTime().ToString("MM/dd/yy")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}

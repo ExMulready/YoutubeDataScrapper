@@ -1,0 +1,88 @@
+@page
+@model SettingsModel
+@{
+    ViewData["Title"] = "Settings";
+}
+
+<div class="d-flex align-items-center mb-4 mt-3">
+    <h4 class="mb-0 fw-bold">
+        <i class="bi bi-gear text-secondary me-2"></i>Settings
+    </h4>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header bg-transparent fw-semibold">
+                <i class="bi bi-key text-warning me-2"></i>API Keys &amp; Storage
+            </div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="Save">
+
+                    <!-- YouTube API Key -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">YouTube Data API Key</label>
+                        <input type="password" name="youTubeApiKey" class="form-control font-monospace"
+                               value="@Model.Settings.YouTubeApiKey"
+                               placeholder="AIza..." autocomplete="off" />
+                        <div class="form-text">
+                            Get a key at
+                            <a href="https://console.developers.google.com/" target="_blank">
+                                Google Cloud Console
+                            </a>
+                            — enable the YouTube Data API v3.
+                        </div>
+                    </div>
+
+                    <!-- Anthropic API Key -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Anthropic API Key</label>
+                        <input type="password" name="anthropicApiKey" class="form-control font-monospace"
+                               value="@Model.Settings.AnthropicApiKey"
+                               placeholder="sk-ant-..." autocomplete="off" />
+                        <div class="form-text">
+                            Used to generate video ideas via Claude.
+                            Get a key at
+                            <a href="https://console.anthropic.com/" target="_blank">
+                                console.anthropic.com
+                            </a>.
+                        </div>
+                    </div>
+
+                    <!-- Database Path -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Database Path</label>
+                        <div class="input-group">
+                            <input type="text" name="databasePath" id="dbPathInput"
+                                   class="form-control font-monospace small"
+                                   value="@Model.Settings.DatabasePath" />
+                            <button type="button" class="btn btn-outline-secondary"
+                                    onclick="document.getElementById('dbPathInput').value = '@Html.Raw(Model.DefaultDbPath.Replace("\\", "\\\\"))'">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            Default: <code>@Model.DefaultDbPath</code>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary fw-semibold w-100">
+                        <i class="bi bi-floppy me-1"></i>Save Settings
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Info card -->
+        <div class="card shadow-sm mt-3">
+            <div class="card-body">
+                <div class="text-muted small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Settings are stored locally at
+                    <code>%APPDATA%\YouTubeResearchStudio\settings.json</code>.
+                    API keys are never sent anywhere except the respective APIs.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,4 @@
+C:\Users\Ethan\RiderProjects\YoutubeDataScrapper\YoutubeDataScrapper\obj\Debug\net8.0-windows\YoutubeDataScrapper.csproj.AssemblyReference.cache
+C:\Users\Ethan\RiderProjects\YoutubeDataScrapper\YoutubeDataScrapper\obj\Debug\net8.0-windows\App.baml
+C:\Users\Ethan\RiderProjects\YoutubeDataScrapper\YoutubeDataScrapper\obj\Debug\net8.0-windows\App.g.cs
+C:\Users\Ethan\RiderProjects\YoutubeDataScrapper\YoutubeDataScrapper\obj\Debug\net8.0-windows\YoutubeResearchStudio_MarkupCompile.cache

@@ -1,0 +1,39 @@
+{
+  "Version": 1,
+  "Hash": "0rkfEZ4034Y5pFxw7XE+MSOxGXZXe9HO+BGqQRPhkr8=",
+  "Source": "YoutubeResearchStudio",
+  "BasePath": "_content/YoutubeResearchStudio",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [
+    {
+      "Name": "YoutubeResearchStudio\\wwwroot",
+      "Source": "YoutubeResearchStudio",
+      "ContentRoot": "C:\\Users\\Ethan\\RiderProjects\\YoutubeDataScrapper\\YoutubeDataScrapper\\wwwroot\\",
+      "BasePath": "_content/YoutubeResearchStudio",
+      "Pattern": "**"
+    }
+  ],
+  "Assets": [
+    {
+      "Identity": "C:\\Users\\Ethan\\RiderProjects\\YoutubeDataScrapper\\YoutubeDataScrapper\\wwwroot\\css\\site.css",
+      "SourceId": "YoutubeResearchStudio",
+      "SourceType": "Discovered",
+      "ContentRoot": "C:\\Users\\Ethan\\RiderProjects\\YoutubeDataScrapper\\YoutubeDataScrapper\\wwwroot\\",
+      "BasePath": "_content/YoutubeResearchStudio",
+      "RelativePath": "css/site.css",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "PreferTarget",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot\\css\\site.css"
+    }
+  ]
+}
