@@ -4,7 +4,7 @@ using YoutubeResearchMcp.Models;
 
 namespace YoutubeResearchMcp.ML;
 
-public static class VideoFeatureExtractor
+public class VideoFeatureExtractor : IFeatureExtractor
 {
     public const int FeatureCount = 12;
 
@@ -23,46 +23,41 @@ public static class VideoFeatureExtractor
     private static readonly Regex YearRe      = new(@"\b20[2-9]\d\b",    RegexOptions.Compiled);
     private static readonly Regex WordSplitRe = new(@"\W+",              RegexOptions.Compiled);
 
-    /// <summary>Extracts the 12-dimensional feature vector from a VideoMetadata object.</summary>
-    public static double[] Extract(VideoMetadata video) =>
+    public double[] Extract(VideoMetadata video) =>
         ExtractCore(video.Title, video.Tags, video.Description);
 
-    /// <summary>Extracts the 12-dimensional feature vector from a stored database record.</summary>
-    public static double[] Extract(VideoRecord record) =>
+    public double[] Extract(VideoRecord record) =>
         ExtractCore(record.Title, record.Tags, record.Description);
 
-    /// <summary>Extracts features from raw inputs to score a concept before publishing.</summary>
-    public static double[] ExtractFromConcept(string title, IEnumerable<string> tags, string description = "") =>
+    public double[] ExtractFromConcept(string title, IEnumerable<string> tags, string description = "") =>
         ExtractCore(title, [.. tags], description);
 
-    /// <summary>Converts a view count to a normalised training label in [0, 1] using log10 scaling.</summary>
-    public static double LabelFromViewCount(long viewCount) =>
+    public double LabelFromViewCount(long viewCount) =>
         Math.Log10(viewCount + 1) / 8.0;
 
-    /// <summary>Computes all 12 features from raw title, tags, and description strings.</summary>
     private static double[] ExtractCore(string title, List<string> tags, string description)
     {
         var titleLower = title.ToLowerInvariant();
         var titleWords = WordSplitRe.Split(titleLower).Where(w => w.Length > 0).ToArray();
 
-        double titleLengthNorm  = Math.Min(title.Length / 120.0, 1.0);
-        double wordCountNorm    = Math.Min(titleWords.Length / 20.0, 1.0);
-        double hasNumber        = DigitRe.IsMatch(title) ? 1.0 : 0.0;
-        double hasQuestion      = title.Contains('?') ? 1.0 : 0.0;
-        double hasHowTo         = HowToRe.IsMatch(title) ? 1.0 : 0.0;
-        double hasListPattern   = ListRe.IsMatch(title) ? 1.0 : 0.0;
-        double hasPowerWord     = titleWords.Any(w => PowerWords.Contains(w)) ? 1.0 : 0.0;
-        double tagCountNorm     = Math.Min(tags.Count / 30.0, 1.0);
-        double descLengthNorm   = Math.Min(description.Length / 5000.0, 1.0);
+        double titleLengthNorm = Math.Clamp(title.Length / 120.0, 0.0, 1.0);
+        double wordCountNorm   = Math.Clamp(titleWords.Length / 20.0, 0.0, 1.0);
+        double hasNumber       = DigitRe.IsMatch(title) ? 1.0 : 0.0;
+        double hasQuestion     = title.Contains('?') ? 1.0 : 0.0;
+        double hasHowTo        = HowToRe.IsMatch(title) ? 1.0 : 0.0;
+        double hasListPattern  = ListRe.IsMatch(title) ? 1.0 : 0.0;
+        double hasPowerWord    = titleWords.Any(w => PowerWords.Contains(w)) ? 1.0 : 0.0;
+        double tagCountNorm    = Math.Clamp(tags.Count / 30.0, 0.0, 1.0);
+        double descLengthNorm  = Math.Clamp(description.Length / 5000.0, 0.0, 1.0);
 
         var alphaChars = title.Where(char.IsLetter).ToArray();
         double titleCapsRatio = alphaChars.Length > 0
-            ? (double)alphaChars.Count(char.IsUpper) / alphaChars.Length
+            ? Math.Clamp((double)alphaChars.Count(char.IsUpper) / alphaChars.Length, 0.0, 1.0)
             : 0.0;
 
         double hasYear            = YearRe.IsMatch(title) ? 1.0 : 0.0;
         int    powerWordCount     = titleWords.Count(w => PowerWords.Contains(w));
-        double powerWordCountNorm = Math.Min(powerWordCount / 5.0, 1.0);
+        double powerWordCountNorm = Math.Clamp(powerWordCount / 5.0, 0.0, 1.0);
 
         return
         [
@@ -72,7 +67,7 @@ public static class VideoFeatureExtractor
         ];
     }
 
-    public static string[] FeatureNames =>
+    public string[] FeatureNames =>
     [
         "TitleLength", "WordCount", "HasNumber", "HasQuestion",
         "HasHowTo", "HasListPattern", "HasPowerWord", "TagCount",

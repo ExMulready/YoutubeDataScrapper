@@ -33,8 +33,9 @@ public static class SettingsService
 
             return settings;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[WARN] Failed to load settings.json: {ex.Message}. Using defaults.");
             return CreateDefaults();
         }
     }
@@ -50,7 +51,6 @@ public static class SettingsService
     /// <summary>Returns the platform-specific app-data folder path used for settings and the database.</summary>
     public static string GetAppDataFolder() => AppDataFolder;
 
-    /// <summary>Creates an AppSettings instance with the default database path pre-filled.</summary>
     private static AppSettings CreateDefaults() => new()
     {
         DatabasePath = DefaultDatabasePath

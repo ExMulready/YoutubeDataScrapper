@@ -8,28 +8,40 @@ namespace YoutubeResearchMcp.ML;
 
 public class PatternLearner
 {
-    private readonly AppDbContext _db;
-    private readonly Dictionary<string, NeuralNetwork> _models = new();
+    private readonly IDbContextFactory<AppDbContext> _factory;
+    private readonly IFeatureExtractor               _extractor;
+    private readonly LruCache<string, NeuralNetwork> _models = new(20);
 
-    public PatternLearner(AppDbContext db) => _db = db;
+    public PatternLearner(IDbContextFactory<AppDbContext> factory, IFeatureExtractor extractor)
+    {
+        _factory   = factory;
+        _extractor = extractor;
+    }
 
     /// <summary>Persists new videos to the database, skipping duplicates by video ID.</summary>
     public async Task<SaveResult> SaveVideosAsync(string niche, List<VideoMetadata> videos)
     {
+        await using var db = _factory.CreateDbContext();
+
         int added = 0, skipped = 0;
+
+        var incomingIds = videos.Select(v => v.VideoId).ToHashSet();
+        var existingIds = await db.VideoRecords
+            .Where(r => incomingIds.Contains(r.VideoId))
+            .Select(r => r.VideoId)
+            .ToHashSetAsync();
 
         foreach (var v in videos)
         {
-            bool exists = await _db.VideoRecords.AnyAsync(r => r.VideoId == v.VideoId);
-            if (exists) { skipped++; continue; }
+            if (existingIds.Contains(v.VideoId)) { skipped++; continue; }
 
-            _db.VideoRecords.Add(new VideoRecord
+            db.VideoRecords.Add(new VideoRecord
             {
                 VideoId      = v.VideoId,
                 Niche        = niche,
                 Title        = v.Title,
                 Description  = v.Description,
-                TagsCsv      = string.Join("|", v.Tags),
+                TagsCsv      = JsonSerializer.Serialize(v.Tags),
                 ChannelTitle = v.ChannelTitle,
                 PublishedAt  = DateTime.TryParse(v.PublishedAt, out var dt) ? dt : null,
                 ViewCount    = v.ViewCount,
@@ -42,11 +54,12 @@ public class PatternLearner
             added++;
         }
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
-        int total = await _db.VideoRecords
-            .Where(r => niche == "" || r.Niche == niche)
-            .CountAsync();
+        var totalQuery = db.VideoRecords.AsQueryable();
+        if (!string.IsNullOrEmpty(niche))
+            totalQuery = totalQuery.Where(r => r.Niche == niche);
+        int total = await totalQuery.CountAsync();
 
         return new SaveResult(added, skipped, total);
     }
@@ -57,7 +70,9 @@ public class PatternLearner
     /// </summary>
     public async Task<TrainResult> TrainAsync(string? niche, int epochs = 150, int minSamples = 10)
     {
-        var query = _db.VideoRecords.AsQueryable();
+        await using var db = _factory.CreateDbContext();
+
+        var query = db.VideoRecords.AsQueryable();
         if (!string.IsNullOrWhiteSpace(niche))
             query = query.Where(r => r.Niche == niche);
 
@@ -73,11 +88,14 @@ public class PatternLearner
                 "Run save_research_data first.",
                 records.Count, 0, 0, 0);
 
-        var features = records.Select(r => VideoFeatureExtractor.Extract(r)).ToList();
-        var labels   = records.Select(r => VideoFeatureExtractor.LabelFromViewCount(r.ViewCount)).ToList();
+        var features = records.Select(r => _extractor.Extract(r)).ToList();
+        var labels   = records.Select(r => _extractor.LabelFromViewCount(r.ViewCount)).ToList();
 
         var nn   = new NeuralNetwork();
-        var loss = nn.Train(features, labels, epochs: epochs, batchSize: 32);
+        var loss = nn.Train(features, labels, epochs: epochs, batchSize: 32,
+            progress: new Progress<TrainingProgress>(p =>
+                Console.WriteLine($"[Training] Epoch {p.Epoch}/{p.TotalEpochs} — loss: {p.Loss:F6}")));
+
         var snapshot = nn.ToSnapshot();
 
         var weightsRecord = new ModelWeights
@@ -92,10 +110,10 @@ public class PatternLearner
             FinalLoss      = loss,
             TrainedAt      = DateTime.UtcNow
         };
-        _db.ModelWeights.Add(weightsRecord);
-        await _db.SaveChangesAsync();
+        db.ModelWeights.Add(weightsRecord);
+        await db.SaveChangesAsync();
 
-        _models[niche ?? ""] = nn;
+        _models.Set(niche ?? "", nn);
 
         return new TrainResult(true, "Training complete.", records.Count, epochs, loss,
             weightsRecord.Id);
@@ -110,7 +128,7 @@ public class PatternLearner
             return new PredictResult(false, "No trained model found. Run train_pattern_model first.",
                 0, null);
 
-        var features   = VideoFeatureExtractor.ExtractFromConcept(title, tags, description);
+        var features   = _extractor.ExtractFromConcept(title, tags, description);
         var score      = nn.Predict(features);
         var importance = ComputeFeatureImportance(nn, features);
 
@@ -120,7 +138,9 @@ public class PatternLearner
     /// <summary>Returns metadata for the most recently trained model scoped to the given niche.</summary>
     public async Task<ModelInfo?> GetLatestModelInfoAsync(string? niche)
     {
-        var q = _db.ModelWeights.AsQueryable();
+        await using var db = _factory.CreateDbContext();
+
+        var q = db.ModelWeights.AsQueryable();
         if (!string.IsNullOrWhiteSpace(niche))
             q = q.Where(m => m.Niche == niche);
         else
@@ -140,7 +160,8 @@ public class PatternLearner
     /// <summary>Returns the count of stored video records, optionally scoped to a niche.</summary>
     public async Task<int> GetVideoCountAsync(string? niche)
     {
-        var q = _db.VideoRecords.AsQueryable();
+        await using var db = _factory.CreateDbContext();
+        var q = db.VideoRecords.AsQueryable();
         if (!string.IsNullOrWhiteSpace(niche))
             q = q.Where(r => r.Niche == niche);
         return await q.CountAsync();
@@ -149,7 +170,8 @@ public class PatternLearner
     /// <summary>Returns stored video records with optional title substring and niche filters.</summary>
     public async Task<List<VideoRecord>> GetAllVideosAsync(string? titleFilter = null, string? niche = null)
     {
-        var q = _db.VideoRecords.AsQueryable();
+        await using var db = _factory.CreateDbContext();
+        var q = db.VideoRecords.AsQueryable();
         if (!string.IsNullOrWhiteSpace(niche))
             q = q.Where(r => r.Niche == niche);
         if (!string.IsNullOrWhiteSpace(titleFilter))
@@ -157,14 +179,16 @@ public class PatternLearner
         return await q.OrderByDescending(r => r.CollectedAt).Take(2000).ToListAsync();
     }
 
-    /// <summary>Returns the model from the in-memory cache, loading from the database if not yet cached.</summary>
+    /// <summary>Returns the model from the LRU cache, loading from the database if not yet cached.</summary>
     private async Task<NeuralNetwork?> GetOrLoadModelAsync(string? niche)
     {
         var cacheKey = niche ?? "";
         if (_models.TryGetValue(cacheKey, out var cached))
             return cached;
 
-        var q = _db.ModelWeights.AsQueryable();
+        await using var db = _factory.CreateDbContext();
+
+        var q = db.ModelWeights.AsQueryable();
         if (!string.IsNullOrWhiteSpace(niche))
             q = q.Where(m => m.Niche == niche);
         else
@@ -182,28 +206,79 @@ public class PatternLearner
         };
 
         var nn = new NeuralNetwork(snap);
-        _models[cacheKey] = nn;
+        _models.Set(cacheKey, nn);
         return nn;
     }
 
     /// <summary>Approximates feature importance by perturbing each input by +0.1 and measuring the score delta.</summary>
-    private static Dictionary<string, double> ComputeFeatureImportance(
-        NeuralNetwork nn, double[] baseFeatures)
+    private Dictionary<string, double> ComputeFeatureImportance(NeuralNetwork nn, double[] baseFeatures)
     {
         var baseScore  = nn.Predict(baseFeatures);
         var importance = new Dictionary<string, double>();
-        var names      = VideoFeatureExtractor.FeatureNames;
+        var names      = _extractor.FeatureNames;
 
         for (int i = 0; i < baseFeatures.Length; i++)
         {
             var perturbed = (double[])baseFeatures.Clone();
-            perturbed[i] += 0.1;
+            perturbed[i] = Math.Clamp(perturbed[i] + 0.1, 0.0, 1.0);
             var delta = nn.Predict(perturbed) - baseScore;
             importance[names[i]] = Math.Round(delta, 4);
         }
 
         return importance.OrderByDescending(kv => Math.Abs(kv.Value))
                          .ToDictionary(kv => kv.Key, kv => kv.Value);
+    }
+
+    /// <summary>Thread-safe fixed-capacity LRU cache backed by a linked list and dictionary.</summary>
+    private sealed class LruCache<TKey, TValue> where TKey : notnull
+    {
+        private readonly int _capacity;
+        private readonly Dictionary<TKey, LinkedListNode<(TKey Key, TValue Value)>> _map;
+        private readonly LinkedList<(TKey Key, TValue Value)> _list;
+        private readonly object _lock = new();
+
+        public LruCache(int capacity)
+        {
+            _capacity = capacity;
+            _map      = new Dictionary<TKey, LinkedListNode<(TKey, TValue)>>(capacity);
+            _list     = new LinkedList<(TKey, TValue)>();
+        }
+
+        public bool TryGetValue(TKey key, out TValue value)
+        {
+            lock (_lock)
+            {
+                if (_map.TryGetValue(key, out var node))
+                {
+                    _list.Remove(node);
+                    _list.AddFirst(node);
+                    value = node.Value.Value;
+                    return true;
+                }
+            }
+            value = default!;
+            return false;
+        }
+
+        public void Set(TKey key, TValue value)
+        {
+            lock (_lock)
+            {
+                if (_map.TryGetValue(key, out var existing))
+                {
+                    _list.Remove(existing);
+                    _map.Remove(key);
+                }
+                else if (_map.Count >= _capacity)
+                {
+                    var lru = _list.Last!;
+                    _list.RemoveLast();
+                    _map.Remove(lru.Value.Key);
+                }
+                var node = _list.AddFirst((key, value));
+                _map[key] = node;
+            }
+        }
     }
 }
 
