@@ -3,6 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace YoutubeResearchMcp.ML;
 
+public record TrainingProgress(int Epoch, int TotalEpochs, double Loss);
+
 public class NeuralNetwork
 {
     public static readonly int[] LayerSizes = [12, 24, 12, 1];
@@ -32,26 +34,26 @@ public class NeuralNetwork
         InitialiseWeights(new Random(42));
     }
 
-    /// <summary>Restores a network from a serialised snapshot.</summary>
+    /// <summary>Restores a network from a serialised snapshot, cloning all arrays to ensure independence.</summary>
     public NeuralNetwork(NetworkSnapshot snap)
     {
-        _w = snap.Weights;
-        _b = snap.Biases;
+        _w = snap.Weights.Select(l => l.Select(r => (double[])r.Clone()).ToArray()).ToArray();
+        _b = snap.Biases.Select(l => (double[])l.Clone()).ToArray();
         (_mW, _mB) = Allocate();
         (_vW, _vB) = Allocate();
         _t = snap.Timestep;
-        NormMean   = snap.NormMean;
-        NormStdDev = snap.NormStdDev;
+        NormMean   = (double[])snap.NormMean.Clone();
+        NormStdDev = (double[])snap.NormStdDev.Clone();
     }
 
-    /// <summary>Returns a serialisable snapshot of the current weights and normalisation statistics.</summary>
+    /// <summary>Returns a deep-cloned serialisable snapshot of the current weights and normalisation statistics.</summary>
     public NetworkSnapshot ToSnapshot() => new()
     {
-        Weights    = _w,
-        Biases     = _b,
+        Weights    = _w.Select(l => l.Select(r => (double[])r.Clone()).ToArray()).ToArray(),
+        Biases     = _b.Select(l => (double[])l.Clone()).ToArray(),
         Timestep   = _t,
-        NormMean   = NormMean,
-        NormStdDev = NormStdDev
+        NormMean   = (double[])NormMean.Clone(),
+        NormStdDev = (double[])NormStdDev.Clone()
     };
 
     /// <summary>Deserialises a network snapshot from JSON and returns a restored NeuralNetwork.</summary>
@@ -67,17 +69,19 @@ public class NeuralNetwork
         JsonSerializer.Serialize(ToSnapshot(), new JsonSerializerOptions { WriteIndented = false });
 
     /// <summary>
-    /// Trains the network using mini-batch Adam gradient descent.
-    /// Features are z-score normalised internally; labels must already be in [0, 1].
+    /// Trains the network using mini-batch Adam gradient descent with early stopping.
+    /// Reports progress every 10 epochs via <paramref name="progress"/> if provided.
     /// Returns the final mean-squared error over all training samples.
     /// </summary>
     public double Train(IReadOnlyList<double[]> rawFeatures, IReadOnlyList<double> labels,
-        int epochs = 100, int batchSize = 32)
+        int epochs = 100, int batchSize = 32,
+        IProgress<TrainingProgress>? progress = null)
     {
         ComputeNormalisation(rawFeatures);
 
         var xs = rawFeatures.Select(Normalise).ToArray();
         double lastLoss = 0;
+        var lossWindow  = new Queue<double>(11);
 
         for (int epoch = 0; epoch < epochs; epoch++)
         {
@@ -98,14 +102,40 @@ public class NeuralNetwork
                 lastLoss += diff * diff;
             }
             lastLoss /= xs.Length;
+
+            if ((epoch + 1) % 10 == 0 || epoch == epochs - 1)
+                progress?.Report(new TrainingProgress(epoch + 1, epochs, lastLoss));
+
+            // Early stopping: if loss improvement over the last 10 epochs is negligible, stop.
+            lossWindow.Enqueue(lastLoss);
+            if (lossWindow.Count > 10) lossWindow.Dequeue();
+
+            if (lossWindow.Count == 10)
+            {
+                var arr      = lossWindow.ToArray();
+                var earlyAvg = arr.Take(5).Average();
+                var lateAvg  = arr.Skip(5).Average();
+                if (earlyAvg - lateAvg < 1e-5) break;
+            }
         }
 
         return lastLoss;
     }
 
-    /// <summary>Returns a performance score in [0, 1] for raw (unnormalised) features.</summary>
+    /// <summary>
+    /// Returns a performance score in [0, 1] for raw (unnormalised) features.
+    /// Throws if the feature vector has the wrong length or contains NaN/Infinity.
+    /// </summary>
     public double Predict(double[] rawFeatures)
     {
+        if (rawFeatures.Length != LayerSizes[0])
+            throw new ArgumentException(
+                $"Expected {LayerSizes[0]} features, got {rawFeatures.Length}.", nameof(rawFeatures));
+
+        if (rawFeatures.Any(f => double.IsNaN(f) || double.IsInfinity(f)))
+            throw new ArgumentException(
+                "Feature vector contains NaN or Infinity.", nameof(rawFeatures));
+
         var x = Normalise(rawFeatures);
         return Forward(x);
     }
@@ -251,8 +281,9 @@ public class NeuralNetwork
                 NormStdDev[i] += d * d;
             }
 
+        // Use Bessel's correction (÷ N−1) for an unbiased sample standard deviation.
         for (int i = 0; i < f; i++)
-            NormStdDev[i] = Math.Sqrt(NormStdDev[i] / xs.Count + 1e-8);
+            NormStdDev[i] = Math.Sqrt(NormStdDev[i] / Math.Max(xs.Count - 1, 1) + 1e-8);
     }
 
     /// <summary>Z-score normalises a feature vector using the stored training statistics.</summary>
@@ -307,13 +338,9 @@ public class NeuralNetwork
         return Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
     }
 
-    /// <summary>Applies element-wise ReLU activation.</summary>
     private static double[] ReLU(double[] z)    => z.Select(v => Math.Max(0, v)).ToArray();
-
-    /// <summary>Applies element-wise sigmoid activation.</summary>
     private static double[] Sigmoid(double[] z) => z.Select(v => 1.0 / (1.0 + Math.Exp(-v))).ToArray();
 
-    /// <summary>Returns the derivative of sigmoid at z: s(z) * (1 - s(z)).</summary>
     private static double SigmoidDerivative(double z)
     {
         var s = 1.0 / (1.0 + Math.Exp(-z));
@@ -323,9 +350,9 @@ public class NeuralNetwork
 
 public class NetworkSnapshot
 {
-    [JsonPropertyName("weights")]    public double[][][]  Weights    { get; set; } = [];
-    [JsonPropertyName("biases")]     public double[][]    Biases     { get; set; } = [];
-    [JsonPropertyName("timestep")]   public int           Timestep   { get; set; }
-    [JsonPropertyName("normMean")]   public double[]      NormMean   { get; set; } = [];
-    [JsonPropertyName("normStdDev")] public double[]      NormStdDev { get; set; } = [];
+    [JsonPropertyName("weights")]    public required double[][][] Weights    { get; init; }
+    [JsonPropertyName("biases")]     public required double[][]   Biases     { get; init; }
+    [JsonPropertyName("timestep")]   public int                   Timestep   { get; init; }
+    [JsonPropertyName("normMean")]   public required double[]     NormMean   { get; init; }
+    [JsonPropertyName("normStdDev")] public required double[]     NormStdDev { get; init; }
 }

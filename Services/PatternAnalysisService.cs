@@ -59,7 +59,7 @@ public class PatternAnalysisService
     }
 
     /// <summary>Identifies which title formula patterns appear at least twice, returning up to six sorted by frequency.</summary>
-    private static List<TitleFormula> ExtractTitleFormulas(List<VideoMetadata> videos)
+    private List<TitleFormula> ExtractTitleFormulas(List<VideoMetadata> videos)
     {
         var results = new List<TitleFormula>();
 
@@ -84,7 +84,7 @@ public class PatternAnalysisService
     }
 
     /// <summary>Counts keyword frequency across titles, excluding stop words and short tokens.</summary>
-    private static List<KeywordFrequency> ExtractKeywordFrequencies(List<string> titles)
+    private List<KeywordFrequency> ExtractKeywordFrequencies(List<string> titles)
     {
         var freq = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
@@ -106,7 +106,7 @@ public class PatternAnalysisService
     }
 
     /// <summary>Counts how often each tag appears across all videos.</summary>
-    private static List<KeywordFrequency> ExtractTagFrequencies(List<VideoMetadata> videos)
+    private List<KeywordFrequency> ExtractTagFrequencies(List<VideoMetadata> videos)
     {
         var freq = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
@@ -128,7 +128,7 @@ public class PatternAnalysisService
     }
 
     /// <summary>Infers likely thumbnail styles from title text signals such as numbers, questions, and money references.</summary>
-    private static List<string> InferThumbnailPatterns(List<VideoMetadata> videos)
+    private List<string> InferThumbnailPatterns(List<VideoMetadata> videos)
     {
         var patterns = new List<string>();
         var titles   = videos.Select(v => v.Title.ToLower()).ToList();
@@ -160,7 +160,7 @@ public class PatternAnalysisService
     }
 
     /// <summary>Classifies hook archetypes from the first line of video descriptions.</summary>
-    private static List<string> ExtractHookStyles(List<VideoMetadata> videos)
+    private List<string> ExtractHookStyles(List<VideoMetadata> videos)
     {
         var hooks = new List<string>();
         var descriptions = videos
@@ -191,7 +191,7 @@ public class PatternAnalysisService
     }
 
     /// <summary>Returns content angles absent from the existing video titles, representing low-competition opportunities.</summary>
-    private static List<string> IdentifyContentGaps(string niche, List<VideoMetadata> videos)
+    private List<string> IdentifyContentGaps(string niche, List<VideoMetadata> videos)
     {
         var gaps      = new List<string>();
         var allTitles = string.Join(" ", videos.Select(v => v.Title)).ToLower();
@@ -217,8 +217,7 @@ public class PatternAnalysisService
         return gaps.Take(5).ToList();
     }
 
-    /// <summary>Averages the duration of top performers to suggest an ideal video length in seconds.</summary>
-    private static int EstimateOptimalDuration(List<VideoMetadata> topPerformers)
+    private int EstimateOptimalDuration(List<VideoMetadata> topPerformers)
     {
         if (topPerformers.Count == 0) return 600;
 
@@ -230,14 +229,15 @@ public class PatternAnalysisService
         return durations.Count > 0 ? (int)durations.Average() : 600;
     }
 
-    /// <summary>Converts a "MM:SS" or "HH:MM:SS" duration string to total seconds.</summary>
+    /// <summary>Converts a "MM:SS" or "HH:MM:SS" duration string to total seconds; returns 0 for malformed input.</summary>
     private static int ParseDurationToSeconds(string duration)
     {
+        static int Safe(string s) => int.TryParse(s, out var v) ? v : 0;
         var parts = duration.Split(':');
         return parts.Length switch
         {
-            3 => int.Parse(parts[0]) * 3600 + int.Parse(parts[1]) * 60 + int.Parse(parts[2]),
-            2 => int.Parse(parts[0]) * 60 + int.Parse(parts[1]),
+            3 => Safe(parts[0]) * 3600 + Safe(parts[1]) * 60 + Safe(parts[2]),
+            2 => Safe(parts[0]) * 60 + Safe(parts[1]),
             _ => 0
         };
     }

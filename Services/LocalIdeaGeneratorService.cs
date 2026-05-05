@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 using YoutubeResearchMcp.ML;
 using YoutubeResearchMcp.Models;
@@ -6,14 +7,53 @@ namespace YoutubeResearchMcp.Services;
 
 public class LocalIdeaGeneratorService
 {
-    private readonly PatternLearner _learner;
-    private static readonly int CurrentYear = DateTime.UtcNow.Year;
+    private readonly PatternLearner   _learner;
+    private readonly AnthropicService _anthropic;
+    private readonly ILogger<LocalIdeaGeneratorService> _logger;
 
-    public LocalIdeaGeneratorService(PatternLearner learner) => _learner = learner;
+    // Property so the year is always current even if the process runs across a year boundary.
+    private static int CurrentYear => DateTime.UtcNow.Year;
 
-    /// <summary>Generates 5 ranked video ideas from pattern analysis, scoring each with the neural network.</summary>
+    public LocalIdeaGeneratorService(
+        PatternLearner learner,
+        AnthropicService anthropic,
+        ILogger<LocalIdeaGeneratorService> logger)
+    {
+        _learner   = learner;
+        _anthropic = anthropic;
+        _logger    = logger;
+    }
+
+    /// <summary>
+    /// Generates 5 ranked video ideas. Uses Claude as the primary path when configured;
+    /// falls back to local template generation when the API key is missing or the call fails.
+    /// </summary>
     public async Task<VideoIdeaResponse> GenerateVideoIdeasAsync(string niche, PatternAnalysis patterns)
     {
+        if (_anthropic.IsConfigured)
+        {
+            try
+            {
+                return await _anthropic.GenerateVideoIdeasAsync(niche, patterns);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Claude idea generation failed (HTTP error); falling back to local templates.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Claude idea generation failed (API error); falling back to local templates.");
+            }
+        }
+
+        return await GenerateLocalIdeasAsync(niche, patterns);
+    }
+
+    private async Task<VideoIdeaResponse> GenerateLocalIdeasAsync(string niche, PatternAnalysis patterns)
+    {
+        if (patterns.TopKeywords.Count < 2)
+            _logger.LogDebug("Sparse keyword data for niche '{Niche}' — using niche words as fallback.", niche);
+
         var candidates = BuildCandidates(niche, patterns);
         var ideas = new List<VideoIdea>();
 
@@ -37,19 +77,20 @@ public class LocalIdeaGeneratorService
             });
         }
 
+        var sorted = ideas.OrderByDescending(i => i.EstimatedViralScore).ToList();
+        for (int i = 0; i < sorted.Count; i++)
+            sorted[i].Rank = i + 1;
+
         return new VideoIdeaResponse
         {
             Niche       = niche,
             GeneratedAt = DateTime.UtcNow.ToString("o"),
-            Ideas       = ideas
-                .OrderByDescending(i => i.EstimatedViralScore)
-                .Select((idea, i) => { idea.Rank = i + 1; return idea; })
-                .ToList()
+            Ideas       = sorted
         };
     }
 
     /// <summary>Constructs 5 candidates covering beginner, mistakes, story, list, and authority angles.</summary>
-    private static List<Candidate> BuildCandidates(string niche, PatternAnalysis patterns)
+    private List<Candidate> BuildCandidates(string niche, PatternAnalysis patterns)
     {
         var hooks      = patterns.HookStyles.Concat(DefaultHooks).ToList();
         var thumbnails = patterns.ThumbnailPatterns.Concat(DefaultThumbnails).ToList();
@@ -151,7 +192,6 @@ public class LocalIdeaGeneratorService
         return candidates;
     }
 
-    /// <summary>Selects a list-format title template matched to the first identified content gap.</summary>
     private static string BuildGapTitle(string nicheTitle, string kw1, PatternAnalysis patterns)
     {
         var gap = patterns.ContentGaps.FirstOrDefault() ?? "";
@@ -175,7 +215,6 @@ public class LocalIdeaGeneratorService
         return $"{n} {nicheTitle} {UpperFirst(kw1)} Tips That Changed Everything for Me";
     }
 
-    /// <summary>Promotes the candidate whose title best matches the dominant title formula to position 0.</summary>
     private static void ReorderByFormulaMatch(List<Candidate> candidates, string formula)
     {
         int idx = -1;
@@ -188,7 +227,6 @@ public class LocalIdeaGeneratorService
             (candidates[0], candidates[idx]) = (candidates[idx], candidates[0]);
     }
 
-    /// <summary>Estimates a viral score when no trained model is available, based on presence of high-value title features.</summary>
     private static int HeuristicScore(string title, List<string> tags)
     {
         int score = 40;
@@ -201,20 +239,16 @@ public class LocalIdeaGeneratorService
         return Math.Clamp(score, 30, 90);
     }
 
-    /// <summary>Combines base tags with extras, deduplicating and capping the result at 10 items.</summary>
     private static List<string> Merge(List<string> baseList, IEnumerable<string> extras) =>
         baseList.Concat(extras).Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToList();
 
-    /// <summary>Returns the item at <c>index % list.Count</c>, allowing safe cycling through any list.</summary>
     private static string Pick<T>(IList<T> list, int index) where T : notnull =>
         list.Count > 0 ? list[index % list.Count].ToString()! : "";
 
-    /// <summary>Title-cases each space-separated word in a string.</summary>
     private static string TitleCase(string s) =>
         string.Join(" ", s.Split(' ')
             .Select(w => w.Length > 0 ? char.ToUpper(w[0]) + w[1..] : w));
 
-    /// <summary>Returns the string with its first character uppercased.</summary>
     private static string UpperFirst(string s) =>
         s.Length > 0 ? char.ToUpper(s[0]) + s[1..] : s;
 

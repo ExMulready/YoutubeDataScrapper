@@ -1,44 +1,53 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using YoutubeResearchMcp.Models;
+using YoutubeResearchMcp.Settings;
 
 namespace YoutubeResearchMcp.Services;
 
 public class AnthropicService
 {
     private readonly HttpClient _http;
-    private const string BaseUrl = "https://api.anthropic.com/v1/messages";
-    private const string Model = "claude-sonnet-4-6";
+    private readonly AppSettings _settings;
 
-    public AnthropicService(HttpClient http, string apiKey)
+    private const string BaseUrl = "https://api.anthropic.com/v1/messages";
+    private const string Model   = "claude-sonnet-4-6";
+
+    // Read IsConfigured from settings each call so a key saved on the Settings page takes effect immediately.
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_settings.AnthropicApiKey);
+
+    // anthropic-version is set globally in Program.cs; x-api-key is added per-request below.
+    public AnthropicService(HttpClient http, AppSettings settings)
     {
-        _http = http;
-        _http.DefaultRequestHeaders.Clear();
-        _http.DefaultRequestHeaders.Add("x-api-key", apiKey);
-        _http.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+        _http     = http;
+        _settings = settings;
     }
 
     public async Task<VideoIdeaResponse> GenerateVideoIdeasAsync(string niche, PatternAnalysis patterns)
     {
+        if (!IsConfigured)
+            throw new InvalidOperationException("Anthropic API key is not configured.");
+
         var prompt = BuildIdeaGenerationPrompt(niche, patterns);
 
         var requestBody = new
         {
-            model = Model,
+            model      = Model,
             max_tokens = 4096,
-            system = "You are an expert YouTube content strategist with deep knowledge of viral video mechanics, SEO, and audience psychology. Generate highly specific, data-backed video ideas in JSON format only.",
-            messages = new[]
-            {
-                new { role = "user", content = prompt }
-            }
+            system     = "You are an expert YouTube content strategist with deep knowledge of viral video mechanics, SEO, and audience psychology. Generate highly specific, data-backed video ideas in JSON format only.",
+            messages   = new[] { new { role = "user", content = prompt } }
         };
 
         var json = JsonSerializer.Serialize(requestBody);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await _http.PostAsync(BaseUrl, content);
+        using var request = new HttpRequestMessage(HttpMethod.Post, BaseUrl)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("x-api-key", _settings.AnthropicApiKey);
+
+        var response     = await _http.SendAsync(request);
         var responseBody = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
@@ -61,7 +70,7 @@ public class AnthropicService
             .Select(f => $"  - Pattern: \"{f.Pattern}\" (used {f.Frequency}x, e.g. \"{f.Example}\")")
             .ToList();
 
-        var topTags = patterns.TopTags.Take(15).Select(t => t.Keyword).ToList();
+        var topTags     = patterns.TopTags.Take(15).Select(t => t.Keyword).ToList();
         var topKeywords = patterns.TopKeywords.Take(15).Select(k => k.Keyword).ToList();
 
         return $$"""
@@ -120,7 +129,6 @@ Respond with ONLY valid JSON matching this exact structure (no markdown, no expl
 
     private static VideoIdeaResponse ParseVideoIdeas(string niche, string rawText)
     {
-        // Strip markdown code fences if present
         var cleaned = rawText.Trim();
         if (cleaned.StartsWith("```"))
         {
@@ -132,35 +140,32 @@ Respond with ONLY valid JSON matching this exact structure (no markdown, no expl
 
         try
         {
-            var parsed = JsonSerializer.Deserialize<GeneratedIdeasWrapper>(cleaned)
-                ?? throw new InvalidOperationException("Null response from JSON parse");
+            var parsed = JsonSerializer.Deserialize<GeneratedIdeasWrapper>(cleaned);
+            if (parsed?.Ideas is { Count: > 0 } ideas)
+                return new VideoIdeaResponse
+                {
+                    Niche       = niche,
+                    GeneratedAt = DateTime.UtcNow.ToString("o"),
+                    Ideas       = ideas
+                };
+        }
+        catch (JsonException) { /* fall through to raw-text fallback */ }
 
-            return new VideoIdeaResponse
-            {
-                Niche = niche,
-                GeneratedAt = DateTime.UtcNow.ToString("o"),
-                Ideas = parsed.Ideas ?? []
-            };
-        }
-        catch
+        return new VideoIdeaResponse
         {
-            // Return the raw text wrapped in a single idea if JSON parsing fails
-            return new VideoIdeaResponse
-            {
-                Niche = niche,
-                GeneratedAt = DateTime.UtcNow.ToString("o"),
-                Ideas =
-                [
-                    new VideoIdea
-                    {
-                        Rank = 1,
-                        Title = "Error parsing structured response",
-                        Hook = rawText,
-                        WhyItWillPerform = "Raw response returned due to parse error"
-                    }
-                ]
-            };
-        }
+            Niche       = niche,
+            GeneratedAt = DateTime.UtcNow.ToString("o"),
+            Ideas       =
+            [
+                new VideoIdea
+                {
+                    Rank             = 1,
+                    Title            = "Error parsing structured response",
+                    Hook             = rawText,
+                    WhyItWillPerform = "Raw response returned due to JSON parse error"
+                }
+            ]
+        };
     }
 
     private class GeneratedIdeasWrapper

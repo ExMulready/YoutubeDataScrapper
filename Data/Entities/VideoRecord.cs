@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 
 namespace YoutubeResearchMcp.Data.Entities;
 
@@ -48,9 +49,21 @@ public class VideoRecord
     [Column("collected_at")]
     public DateTime CollectedAt { get; set; } = DateTime.UtcNow;
 
+    // Supports both new JSON format and legacy pipe-delimited format for backward compatibility.
     [NotMapped]
-    public List<string> Tags =>
-        string.IsNullOrEmpty(TagsCsv) ? [] : [.. TagsCsv.Split('|')];
+    public List<string> Tags
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(TagsCsv)) return [];
+            if (TagsCsv.TrimStart().StartsWith('['))
+            {
+                try { return JsonSerializer.Deserialize<List<string>>(TagsCsv) ?? []; }
+                catch (JsonException) { /* fall through to legacy pipe format */ }
+            }
+            return [.. TagsCsv.Split('|', StringSplitOptions.RemoveEmptyEntries)];
+        }
+    }
 
     [NotMapped]
     public double EngagementRate =>

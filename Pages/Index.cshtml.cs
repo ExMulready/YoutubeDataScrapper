@@ -24,7 +24,7 @@ public class IndexModel : PageModel
         Session   = session;
     }
 
-    public int MaxResults { get; private set; } = 25;
+    public int MaxResults { get; private set; } = 50;
     public string RankBy { get; private set; } = "views";
 
     public void OnGet() { }
