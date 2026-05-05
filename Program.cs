@@ -51,10 +51,15 @@ builder.Services.AddScoped<LocalIdeaGeneratorService>();
 builder.Services.AddSingleton<ResearchSessionStore>();
 builder.Services.AddScoped<ResearchSession>(sp =>
 {
-    var store = sp.GetRequiredService<ResearchSessionStore>();
-    var http  = sp.GetRequiredService<IHttpContextAccessor>();
-    var id    = http.HttpContext?.Session.Id ?? "default";
-    return store.GetOrCreate(id);
+    var store       = sp.GetRequiredService<ResearchSessionStore>();
+    var http        = sp.GetRequiredService<IHttpContextAccessor>();
+    var httpContext = http.HttpContext;
+    if (httpContext == null) return new ResearchSession();
+    // Writing to the session marks it modified so ASP.NET Core commits it and
+    // sends the session cookie.  Without this the cookie is never issued and
+    // every request gets a brand-new Session.Id, losing all stored data.
+    httpContext.Session.SetString("_s", "1");
+    return store.GetOrCreate(httpContext.Session.Id);
 });
 
 var app = builder.Build();

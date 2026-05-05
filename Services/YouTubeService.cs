@@ -78,37 +78,56 @@ public class YouTubeService
 
     private async Task<List<VideoMetadata>> DoSearchAsync(string niche, int maxResults, string rankBy)
     {
-        // Capture the client once so both calls in this operation use the same instance.
-        var client        = GetClient();
-        var searchRequest = client.Search.List("snippet");
-        searchRequest.Q                 = niche;
-        searchRequest.Type              = "video";
-        searchRequest.MaxResults        = Math.Min(maxResults, 50);
-        searchRequest.Order             = rankBy switch
+        var client       = GetClient();
+        var publishedAfter = DateTime.UtcNow.AddMonths(-1);
+        var order = rankBy switch
         {
             "trending"   => SearchResource.ListRequest.OrderEnum.Date,
             "engagement" => SearchResource.ListRequest.OrderEnum.Relevance,
             _            => SearchResource.ListRequest.OrderEnum.ViewCount
         };
-        searchRequest.VideoDefinition   = SearchResource.ListRequest.VideoDefinitionEnum.High;
-        searchRequest.RelevanceLanguage = "en";
 
-        var searchResponse = await searchRequest.ExecuteAsync();
-        var videoIds = searchResponse.Items
-            .Where(i => i.Id?.VideoId != null)
-            .Select(i => i.Id.VideoId)
-            .ToList();
+        // The API returns at most 50 per page; paginate until we have enough.
+        var videoIds  = new List<string>();
+        string? pageToken = null;
+        const int PageSize = 50;
 
-        if (videoIds.Count == 0)
-            return [];
+        while (videoIds.Count < maxResults)
+        {
+            var req = client.Search.List("snippet");
+            req.Q                 = niche;
+            req.Type              = "video";
+            req.MaxResults        = PageSize;
+            req.Order             = order;
+            req.RelevanceLanguage = "en";
+            req.PublishedAfter    = publishedAfter;
+            if (pageToken != null) req.PageToken = pageToken;
 
-        var videosRequest = client.Videos.List("snippet,statistics,contentDetails");
-        videosRequest.Id = string.Join(",", videoIds);
+            var response = await req.ExecuteAsync();
 
-        var videosResponse = await videosRequest.ExecuteAsync();
+            foreach (var item in response.Items)
+            {
+                if (item.Id?.VideoId != null)
+                    videoIds.Add(item.Id.VideoId);
+                if (videoIds.Count == maxResults) break;
+            }
 
-        return videosResponse.Items
-            .Select(v => new VideoMetadata
+            pageToken = response.NextPageToken;
+            if (string.IsNullOrEmpty(pageToken)) break;
+        }
+
+        if (videoIds.Count == 0) return [];
+
+        // Fetch full metadata in batches of 50 (Videos.list id limit).
+        var allVideos = new List<VideoMetadata>();
+        for (int i = 0; i < videoIds.Count; i += PageSize)
+        {
+            var batch = videoIds.Skip(i).Take(PageSize).ToList();
+            var videosRequest = client.Videos.List("snippet,statistics,contentDetails");
+            videosRequest.Id = string.Join(",", batch);
+            var videosResponse = await videosRequest.ExecuteAsync();
+
+            allVideos.AddRange(videosResponse.Items.Select(v => new VideoMetadata
             {
                 VideoId      = v.Id,
                 Title        = v.Snippet?.Title ?? "",
@@ -124,9 +143,11 @@ public class YouTubeService
                     ?? v.Snippet?.Thumbnails?.Default__?.Url
                     ?? "",
                 Duration = ParseDuration(v.ContentDetails?.Duration ?? "")
-            })
+            }));
+        }
+
+        return allVideos
             .OrderByDescending(v => rankBy == "engagement" ? (long)(v.EngagementRate * 1000) : v.ViewCount)
-            .Take(maxResults)
             .ToList();
     }
 

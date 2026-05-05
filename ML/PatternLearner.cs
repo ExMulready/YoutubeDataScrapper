@@ -25,15 +25,22 @@ public class PatternLearner
 
         int added = 0, skipped = 0;
 
-        var incomingIds = videos.Select(v => v.VideoId).ToHashSet();
-        var existingIds = await db.VideoRecords
-            .Where(r => incomingIds.Contains(r.VideoId))
-            .Select(r => r.VideoId)
-            .ToHashSetAsync();
+        // Query existing IDs in chunks of 500 to stay under SQLite's variable limit.
+        var incomingIds = videos.Select(v => v.VideoId).Distinct().ToList();
+        var existingIds = new HashSet<string>();
+        foreach (var chunk in incomingIds.Chunk(500))
+        {
+            var found = await db.VideoRecords
+                .Where(r => chunk.Contains(r.VideoId))
+                .Select(r => r.VideoId)
+                .ToListAsync();
+            existingIds.UnionWith(found);
+        }
 
         foreach (var v in videos)
         {
-            if (existingIds.Contains(v.VideoId)) { skipped++; continue; }
+            // Skip both DB duplicates and within-batch duplicates (pagination can repeat videos).
+            if (!existingIds.Add(v.VideoId)) { skipped++; continue; }
 
             db.VideoRecords.Add(new VideoRecord
             {

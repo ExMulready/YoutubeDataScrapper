@@ -29,7 +29,7 @@
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small">Results</label>
                     <select name="maxResults" class="form-select">
-                        @foreach (var n in new[] { 10, 25, 50 })
+                        @foreach (var n in new[] { 50, 100, 250, 500, 1000 })
                         {
                             <option value="@n" selected="@(n == Model.MaxResults)">@n videos</option>
                         }
