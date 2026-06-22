@@ -1,0 +1,17 @@
+{
+  "aggressiveness_level": 3,
+  "dry_run": true,
+  "market_hours_only": true,
+  "anthropic_api_key_env": "ANTHROPIC_API_KEY",
+  "robinhood_mcp_command": ["npx", "-y", "robinhood-mcp"],
+  "robinhood_mcp_env_vars": {
+    "ROBINHOOD_USERNAME": "${ROBINHOOD_USERNAME}",
+    "ROBINHOOD_PASSWORD": "${ROBINHOOD_PASSWORD}",
+    "ROBINHOOD_MFA_CODE": "${ROBINHOOD_MFA_CODE}"
+  },
+  "db_path": "./trading_agent.db",
+  "log_level": "INFO",
+  "watchlist_name": "Default",
+  "max_stocks_to_analyze_per_cycle": 10,
+  "cycle_timeout_seconds": 180
+}
